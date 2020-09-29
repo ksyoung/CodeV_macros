@@ -1,0 +1,154 @@
+!Calc strehl across focal plane.  coords are relative FOV.
+!This version uses quick best focus to get strehl instead of PSF.   Faster.  Less accurate at low strehl ~< .5
+!  Can switch to strehl from PSF by commenting out and commenting in the relevant sections below.
+!write data columns to buffer   x (deg) | y (deg) |  x (cm) | y (cm) | strehl | flag
+
+!!set up args
+
+! arg0 '  '
+! arg0 '  '
+
+! arg1 name 'Total number of field points on FP'
+! arg1 type int
+! arg1 default 121
+
+! arg2 name 'Name of output file'
+! arg2 type str
+! arg2 default "strehl_across_field.csv"
+
+! arg3 name 'Radial field angle to probe to'
+! arg3 type num
+! arg3 default 3
+!!
+
+!declare variables and such
+
+lcl num ^x_fov ^y_fov
+lcl num ^strehl
+lcl num ^data(#1,6)   !! array that is # of points long and has 6 columns.  All data goes here: x,y in deg, x, y, strehl, flag.  Last column is flag for data / no data
+lcl num ^low ^high
+lcl num ^export(6)
+!lcl str ^exportstr(4)
+lcl str ^exportstr(6)
+
+! inital values
+OUT NO
+^dfov == #3
+^radius == (sqrt(#1)-1)/2
+^high == ^radius
+^low == -^radius
+^pos == 0
+
+for ^i ^low ^high
+for ^j ^low ^high
+^x_fov == ^i/^radius
+^y_fov == ^j/^radius
+^pos == ^pos + 1
+
+xan f1 ^x_fov*^dfov
+yan f1 ^y_fov*^dfov
+
+out yes
+
+wri 'x, y field: ' ^x_fov*^dfov ^y_fov*^dfov
+
+!! exclude points at corners to avoid ray traces failing.  limit to a radius.
+if (sqrtf(^x_fov**2+^y_fov**2) < 1.0 )  !!! should be < 1.0
+ 
+  wri 'running quick best focus'
+  !! set vignetting
+  out no
+  run "C:\CODEV106_SR1\macro\setvig.seq" 1e-007 0.1 100 NO ;GO
+
+  !! run wavefront error and put in buffer.
+  buf del b0
+  buf Yes
+  wav; nom yes; bes no; go
+  buf No
+  buf mov b0 i1 j1
+
+  !! Collect data in array
+  buf fnd b0 "Strehl"
+  ^strehl == (buf.num ic+4 jc+2)
+
+  ^data(^pos,1) == (xri f1)  !! This only works if all rays trace
+  ^data(^pos,2) == (yri f1)
+  ^data(^pos,3) == ^strehl
+  ^data(^pos,4) == 1
+  ^data(^pos,5) == ^x_fov*^dfov
+  ^data(^pos,6) == ^y_fov*^dfov
+
+else
+  wri 'not running quick best focus'
+  ^data(^pos,1) == .5*^i   !! write out cleary wrong numbers. (also they're flagged so who cares?)
+  ^data(^pos,2) == .5*^j
+  ^data(^pos,3) == 0.0
+  ^data(^pos,4) == 0
+  ^data(^pos,5) == ^x_fov*^dfov
+  ^data(^pos,6) == ^y_fov*^dfov
+  
+
+  !!! Section to run PSF instead of best focus!!!!!!!
+  !  !! run psf and put in buffer.
+  !  buf del b0
+  !  buf Yes
+  !  psf;plo n;go
+  !  buf No
+  !  buf mov b0 i1 j1
+  !  !! Collect data in array
+  !
+  !  buf mov b0 ic+1
+  !  buf fnd b0 "Strehl Ratio ="
+  !  ^strehl == (buf.num ic j2)
+  !
+  !  ^data(^pos,1) == (xri f1)  !! This only works if all rays trace
+  !  ^data(^pos,2) == (yri f1)
+  !  ^data(^pos,3) == ^strehl
+  !  ^data(^pos,4) == 1
+  !  ^data(^pos,5) == ^x_fov*^dfov
+  !  ^data(^pos,6) == ^y_fov*^dfov
+  !
+  !
+  !else
+  !  wri 'not running psf'
+  !  ^data(^pos,1) == 2*^i   !! write out cleary wrong numbers. (also they're flagged so who cares?)
+  !  ^data(^pos,2) == 2*^j
+  !  ^data(^pos,3) == 0.0
+  !  ^data(^pos,4) == 0
+  !  ^data(^pos,5) == ^x_fov*^dfov
+  !  ^data(^pos,6) == ^y_fov*^dfov
+  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+end if
+
+end for
+end for
+
+!! string for data header.
+^exportstr(1) == 'X';^exportstr(2) == 'Y';^exportstr(3) == 'strehl';^exportstr(4) == 'flag';^exportstr(5) == 'X_deg';^exportstr(6) == 'Y_deg'
+
+!! write to buffer and save to file
+buf del b3
+BUF MOV b3
+for ^i 1 6
+ buf put b3 i1 j^i ^exportstr(^i)
+end for
+
+for ^i 1 #1
+ for ^j 1 6
+   ^export(^j) == ^data(^i, ^j)
+ end for
+ ^result == ARR_TO_BUF(^export, 1, 6, 3)
+end for
+BUF SEP ','
+!out yes      !! debugger
+!buf lis b3   !!
+out yes
+BUF EXP SEP #2
+  
+!! write to screen
+wri "	X fov deg	Y fov deg	x image height	   y image height       Strehl     data flag (0 = fail, 1 = good strehl)"
+for ^i 1 #1
+  wri ^data(^i, 5) ^data(^i, 6) ^data(^i, 1) ^data(^i, 2) ^data(^i, 3) ^data(^i, 4)
+
+end for

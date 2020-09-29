@@ -1,0 +1,119 @@
+!!set up args
+
+! arg0 '  '
+! arg0 '  '
+
+! arg1 name 'Aperture diameter projected'
+! arg1 type num
+! arg1 default 30
+
+! arg2 name 'F mr'
+! arg2 type num
+! arg2 default 80
+
+! arg3 name 'Vertical offset'
+! arg3 type num
+! arg3 default 100
+
+! arg4 name 'D sr'
+! arg4 type num
+! arg4 default 20
+
+! arg5 name 'beta angle'
+! arg5 type num
+! arg5 default 10
+
+!declare variables and such
+
+^pi ==  3.14159265
+
+^D == #1
+^F_mr == #2
+^h == #3
+^D_sr == #4
+^beta == #5*^pi/180
+
+! design option 1 in granet 2002
+
+^sigma == 1  ! +1 is gregorian, -1 is cassegrain.  Not all equations have sigma implemented so don't switch this.
+
+^theta_0 == -2*atanf(^h/(2.0*^F_mr))
+
+^theta_u == -2.0*atanf((2.0*^h + ^D)/(4.0*^F_mr))
+
+^theta_l == -2*atanf((2*^h-^D)/(4*^F_mr))
+
+^eccent == (1-^sigma*sqrtf(tanf(^beta/2.0)/tanf((^beta-^theta_0)/2.0)))/(1+^sigma*sqrtf(tanf(^beta/2.0)/tanf((^beta-^theta_0)/2.0)))
+
+^alpha == 2.0*atanf((^eccent+1)/(^eccent-1)*tanf(^beta/2.0))
+
+^theta_e == -^sigma * ( 2.0*atanf((1-^eccent)/(1+^eccent)*tanf((^theta_u - ^beta)/2.0)) - ^alpha )
+
+^a == (-^sigma * ^D_sr) / ( ((^eccent**2 - 1) * sinf(^beta - ^theta_u))/(^eccent * cosf(^beta - ^theta_u) + 1) - ((^eccent**2 - 1) * sinf(^beta - ^theta_l))/(^eccent * cosf(^beta - ^theta_l) + 1)  )
+
+^f_sr == ^a*^eccent
+
+^L_s == ^a*(2.0+(^eccent**2.0-1)/(^eccent*cosf(^beta-^theta_0)+1))
+
+^L_m == -^a*((^eccent**2.0-1)/(^eccent*cosf(^beta-^theta_0)+1)) - ^h / sinf(^theta_0)
+
+^d_mrfocus == ^h - ^D/2 +2*^f_sr*sinf(^beta)
+
+^d_edges == ^h - ^D/2 + ^a*((^eccent**2.0-1.0)*sinf(^theta_u)/(cosf(^beta-^theta_u)+1.0))  !ignored cassegrain component
+
+^c == ^f_sr
+
+^b == sqrtf(-^f_sr**2.0 + ^a**2)! semi-major axis of SR
+
+! diameter of sub-reflector.  old
+!ds_x == -sigma*a*( ((eccent**2.0-1.0)*sinf(beta-theta_u))/(eccent*cosf(beta-theta_u)+1) - \
+!                  ((eccent**2.0-1.0)*sinf(beta-theta_l))/(eccent*cosf(beta-theta_l)+1))
+
+!c == (2*F_mr/(1+cosf(theta_0))-L)*(eccent*cosf(beta-theta_0)-1)/(eccent-1/eccent)
+
+^R_sr == ^a*(^eccent**2-1)
+
+^f_eff == ^F_mr*sinf(^alpha)/sinf(^beta)
+
+^f_num == ^f_eff/^D
+^f_num2 == 1/(2*sinf(^theta_e))
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+wri 'D: ' ^D
+wri '^theta_e: ' ^theta_e*180/^pi
+wri '^theta_0: ' ^theta_0*180/^pi
+wri 'D_sr:' ^D_sr
+wri '^beta: ' ^beta*180/^pi
+wri '^alpha: ' ^alpha*180/^pi
+wri '^eccent: ' ^eccent '  k: ' -(^eccent**2) '    k_ob: ' ^eccent**2/(1-(^eccent**2))
+wri 'F of MR: ' ^F_mr
+wri '2c: ' 2*^c
+!!!wri 'd_cf: ' ^d_hfocus
+wri 'd_cs: ' ^d_edges  ' Edge clearance'
+wri 'h, offset of primary: ' ^h
+wri 'L_s: ' ^L_s
+wri 'a of SR: ' ^a
+wri 'b of SR: ' sqrtf((^a**2.0)*(1-^eccent**2.0))
+wri 'f=ae, SR: ' ^f_sr
+wri 'R of SR: ' ^R_sr 'thi after SR: ' -(^a*(1-^eccent))
+wri 'R_b of SR: ' ^R_sr/((1-(^eccent**2))**(3.0/2.0))
+wri 'f number: ' ^f_num ', or  ' ^f_num2
+!wri 'q2 to focus (y, z): ' ^q2F0_y ' , ' ^q2F0_z
+
+!! write data to lens
+out no
+thi  s3 -^F_mr
+thi  s5 -(^a*(1-^eccent))
+rdy z1 s6 -^R_sr
+k z1 s6 -(^eccent**2)
+
+thi s7 2*^c
+
+yde  s3 -^h
+ade  s4 -^beta*180/^pi
+ade  s8 -^alpha*180/^pi
+
+!! apertures
+cir s3 ^D/2
+ady s3 ^h
+out yes

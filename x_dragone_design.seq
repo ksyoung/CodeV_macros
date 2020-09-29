@@ -1,0 +1,143 @@
+!!set up args
+
+!! arg0 '  '
+!! arg0 '  '
+
+!! arg1 name 'Aperture diameter (projected)'
+!! arg1 type num
+!! arg1 default 30
+
+!! arg2 name 'theta_e'
+!! arg2 type num
+!! arg2 default 14.475
+
+!! arg3 name 'theta_0'
+!! arg3 type num
+!! arg3 default -100
+
+!! arg4 name 'theta_p'
+!! arg4 type num
+!! arg4 default -170
+
+!! arg5 name 'L'
+!! arg5 type num
+!! arg5 default 55.7
+
+!declare variables and such
+
+^pi ==  3.14159265
+
+^D == 120.                        !! #1
+^theta_e == 11.5*^pi/180           !! #2*^pi/180
+^theta_0 == -60*^pi/180           !! #3*^pi/180
+^theta_p == -106.*^pi/180           !! #4*^pi/180
+^L ==  112.                     !154.415388015    !! #5
+
+^beta == ^theta_p/2+atanf(sinf(^theta_p/2)*sinf(^theta_0/2)/(sinf((^theta_p-^theta_0)/2) + sinf(^theta_p/2)*cosf(^theta_0/2)))
+
+^alpha == ^theta_p-^beta
+
+^eccent == sinf((^beta+^alpha)/2)/sinf((^beta-^alpha)/2)
+
+^F_mr == ^D*sinf(^beta)/(4*tanf(^theta_e/2)*sinf(^theta_p-^beta))
+
+^c == (2*^F_mr/(1+cosf(^theta_0))-^L)*(^eccent*cosf(^beta-^theta_0)-1)/(^eccent-1/^eccent)
+
+^d_hfocus == 2*^F_mr*tanf(^theta_0/2) - 2*^c*sinf(^beta) - ^D/2
+
+^d_edges == -2*^F_mr*tanf(^theta_0/2) + 2*^c*sinf(^beta) - ^c*(^eccent-1/^eccent)/(^eccent*cosf(^alpha+^theta_e)+1)*sinf(^theta_p+^theta_e) - ^D/2
+
+^h == 2*^F_mr*tanf(-^theta_0/2)
+
+^L_s == sinf(^beta-^theta_0)/sinf(^alpha)*(^h/(sinf(absf(^theta_0)))-^L)
+
+^a == ^h/(2*sinf(absf(^theta_0)))-(^L+^L_s)/2
+
+^f_sr == ^a*^eccent
+
+^R_sr == ^a*(^eccent**2-1)
+
+^f_eff == ^F_mr*sinf(^alpha)/sinf(^beta)
+
+^f_num == ^f_eff/^D
+^f_num2 == 1/(2*sinf(^theta_e))
+
+^q2F0_y == absf(2*^f_sr*cosf(^beta+^pi/2) - (^h+^D/2))
+^q2F0_z == absf(-2*^f_sr*sinf(^beta+^pi/2) - ((2*^h+^D)**2/(16*^F_mr)-^F_mr))
+
+^q1_y == ^h + ^D/2
+^q1_z == 1
+^q2_y == ^h - ^D/2
+^q2_z == 1
+
+^q0_y == ^h
+^q0_z == ^h**2. / (4. * ^F_mr) - ^F_mr
+
+^p0_y == -(^h/(sinf(absf(^theta_0))) - ^L) * sinf(^theta_0)
+^p0_z == -(^h/(sinf(absf(^theta_0))) - ^L) * cosf(^theta_0)
+
+^F0_y ==  2*^f_sr*cosf(^beta+^pi/2)
+^F0_z == -2*^f_sr*sinf(^beta+^pi/2)
+
+wri 'D: ' ^D
+wri '^theta_e: ' ^theta_e*180/^pi
+wri '^theta_0: ' ^theta_0*180/^pi
+wri '^theta_p: ' ^theta_p*180/^pi
+wri 'L: ' ^L
+wri '^beta: ' ^beta*180/^pi
+wri '^alpha: ' ^alpha*180/^pi
+wri '^eccent: ' ^eccent '  k: ' -(^eccent**2)
+wri 'F of MR: ' ^F_mr
+wri '2c: ' 2*^c
+wri 'd_cf: ' ^d_hfocus
+wri 'd_cs: ' ^d_edges  ' Edge clearance'
+wri 'h, offset of primary: ' ^h
+wri 'L_s: ' ^L_s
+wri 'a of SR: ' ^a
+wri 'f=ae, SR: ' ^f_sr
+wri 'R of SR: ' ^R_sr 'thi after SR: ' (^a*(1-^eccent))
+wri 'f number: ' ^f_num ', or  ' ^f_num2
+wri 'q2 to focus (y, z): ' ^q2F0_y ' , ' ^q2F0_z
+
+wri ' '
+wri 'Q0: y,z' ^q0_y ^q0_z
+wri 'P0: y,z' ^p0_y ^p0_z
+wri 'F0: y,z' ^F0_y ^F0_z
+
+
+!! write data to lens
+^do == 1
+if ^do = 1
+  out no
+  thi s3 -^F_mr
+  thi s4 2*^c
+  thi s5 (^a*(1-^eccent))
+
+  rdy s6 ^R_sr
+  k s6 -(^eccent**2)
+  yde s3 ^h
+  ade s4 ^beta*180/^pi
+  ade s7 ^alpha*180/^pi
+
+  ! apertures
+  cir s3 (^D/2)*1.5
+  !cir s6 (^D/2)*1.5
+  
+  ady s3 -^h
+  !ADY S3  EDG ^h
+  out yes
+
+  !! also place the stop, for funsies.
+  ^z == 1 / (16 * ^F_mr) * ((2*^h + ^D)**2 - (2*^h - ^D)**2)
+  ^theta_stop == atanf( ^D / ^z)
+
+  wri ^z
+  wri ^theta_stop*180/^pi
+
+  thi ss (^h**2/(4*^F_mr))
+  ELX Ss (^D/2)
+  ELy Ss ((^D / sinf(^theta_stop))/2)
+  DAR Ss
+  ADE Ss -(90-^theta_stop * 180/^pi)
+
+  end if

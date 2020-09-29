@@ -1,0 +1,378 @@
+!
+!  Heavily changed by Karl Young, UMN, in 2014-2018
+!
+!***************************************************
+! Sequence:     PLOT_STREHL_vs_ALL_FIELDS
+!
+! Purpose:      Sets fields based on ^maxfield and plots Strehl Ratio across fields Y, X, -Y, -X.
+!        ^maxfield is just max angle to calculate strehl to.
+!
+! Buffers Used: B0
+!
+! Suggestions:  1. SAVE FIRST!!!   This macro deletes, replaces, and then reinstates your field angles.
+!               2. Lens needs to be defined by object angle fields.
+!        3. Only original on axis field point needs to be F1, or they won't all get reinstated.
+!
+! Author:  D. Hasenauer(Original Strehl ratio across field)
+!
+! History: 12-31-99 DH     NEW
+!          10-20-07 WS     Modified the macro of relative illumination vs. field plot and converted it into a macro to plot Strehl Ratio vs. field
+!          08-09-13 Karl   Modified heavily to use new fields to calculate and plot strehl vs x,y,-x,-y
+!
+!***************************************************
+
+! arg0 'Input maxFOV (deg), frequencies (GHz), and Strehl target'
+! arg0 'Plots Strehl vs FOV'
+
+! arg1 name 'Max FOV'
+! arg1 type num
+! arg1 default 4
+
+! arg2 name 'Frequency 1'
+! arg2 type num
+! arg2 default 150
+
+! arg3 name 'Frequency 2'
+! arg3 type num
+! arg3 default 150
+
+! arg4 name 'Frequency 3'
+! arg4 type num
+! arg4 default 150
+
+! arg5 name 'Manual(Y) or auto(N) run (Debugging only)'
+! arg5 type str
+! arg5 default 'Y'
+
+! arg6 name 'Subtitle for plot'
+! arg6 type str
+
+! arg7 name 'Strehl value to get field positions at'
+! arg7 type num
+! arg7 default 0.8
+
+
+!rfd n
+
+lcl num ^relill(16,25) ^relfov(16,25) ^oldfield(2,25) ^imghgt(16,25)
+lcl num ^fint ^max_hgt ^pos
+lcl str ^xy_dir(4) ^tit_apend
+lcl num ^s(3,4) ^s_fov(3,4) ^s_img(3,4) ^u_s(3,4) ^ufov(3,4) ^uimg(3,4) ^l_s(3,4) ^lfov(3,4) ^limg(3,4) ^i_fov(3,4) ^i_img(3,4)
+lcl num ^pos_relfov(4,25) ^pos_imghgt(4,25)
+
+^maxfield == #1
+
+!!! Storing current F info to be restored later
+for ^k 1 25        !!!^oldfield in (x,y)
+  ^oldfield(1,^k) == (xan f^k)
+end for
+
+for ^k 1 25
+  ^oldfield(2,^k) == (yan f^k)
+end for
+
+!!! Calculating and inputing new fields, don't forget 'set vig'
+^fint == ^maxfield/24
+
+out no
+
+^wave1 == 300/#2*1e6
+^wave2 == 300/#3*1e6
+^wave3 == 300/#4*1e6
+
+for ^freq 1 3   !!Beginning 3 freq loop
+  if ^freq = 1
+    WL W1 ^wave1
+    ^wave == 300/^wave1*1e6
+
+  else if ^freq = 2
+    WL W1 ^wave2
+    ^wave == 300/^wave2*1e6
+
+  else if ^freq = 3
+    WL W1 ^wave3
+    ^wave == 300/^wave3*1e6
+
+  end if
+
+ for ^COUNT 1 4
+
+  del f1..25
+  ins f1..24
+
+  if ^COUNT = 3
+     ^fint == ^fint*(-1)
+  end  if
+
+  if (^COUNT = 1) or (^COUNT = 3)
+    ^xy_dir(^COUNT) == 'YAN'
+    ^img_dir == 'YRI'
+  else
+    ^xy_dir(^COUNT) == 'XAN'
+    ^img_dir == 'XRI'
+  end if
+
+  $xy_dir(^COUNT) F1 0 !! needed so F1 is on axis
+
+  for ^f 2 25                !!Setting new fields
+    $xy_dir(^COUNT) F^f (^fint*(^f-1))
+    ^relfov(^COUNT+((^freq-1)*4),^f) == ^fint*(^f-1)
+    if (^COUNT = 1) or (^COUNT = 3)
+      ^imghgt(^COUNT+((^freq-1)*4),^f) == (y r1 f^f)
+    else
+      ^imghgt(^COUNT+((^freq-1)*4),^f) == (x r1 f^f)
+    end if
+  end for
+
+  cra f2 1 1 1 1  !! this is dumb, but I'm trying to keep the next command from failing.
+  del cra f1..25  !!  deleting all defined chief ray aim points to defaults, because things seem to fail a lot.
+    
+  !if (#5)      !! debugging tool
+  !  in input
+  !else          !!Seems to only run once??  could also try calling input.seq --gives command back to CodeV prompt
+
+    run "C:\CODEV106_SR1\macro\setvig.seq" 1e-007 0.1 100 NO ;GO
+    !set vig
+  !end if
+
+  
+  buf del b0  !!Performing, storing QBF for getting strehl.
+  buf Yes
+  wav; nom yes; bes no; thr no; NRD 80; go   !! x4 rays across diameter.  runs QBF.
+  ! psf;plo n;go  !! calc strehl from PSF instead fo QBF.  Slower, but better at low strehl values.
+  buf No
+  buf mov b0 i1 j1
+
+  !! Collect Relative Illumination data in array, I could use array rows as different values vs strehl
+  ! Commands to pull Strehl numbers from QBF output.
+  buf fnd b0 "Strehl"
+  buf mov b0 ic+4 jc+2
+
+  ^relill(^COUNT+((^freq-1)*4),1) == (buf.num ic jc)  !!this is strehl.
+
+  for ^f 2 25
+    buf mov b0 ic+3
+    ^relill(^COUNT+((^freq-1)*4),^f) == (buf.num ic jc)
+  end for
+
+  ! Commands to pull Strehl numbers from PSF output.
+  ! buf mov b0 ic+1
+  ! buf fnd b0 "Strehl Ratio ="
+  !
+  ! ^relill(^COUNT+((^freq-1)*4),1) == (buf.num ic j2)
+  !
+  ! for ^f 2 25
+  !   buf fnd fwd
+  !   ^relill(^COUNT+((^freq-1)*4),^f) == (buf.num ic j2)
+  ! end for
+
+ end for
+
+
+ !!!Outputing our strehl to command window.
+ ^format == "     'dd.ddd'               'ddd.dd'            'dd.dd'"
+ out T
+ wri
+ wri
+ wri "                  Strehl Ratio vs. Field Angle"
+ wri "                ---------------------------------------"
+ wri "                  Date:"  (dat)  "    Time:" (tim)
+ wri
+ wri " Lens File  =>" (fil)
+ wri ^wave
+ for ^dir 1 4
+      wri " Lens Title =>" (tit z1)
+  if (^dir = 1 or ^dir = 2)
+      wri " Field direction=>"  ^xy_dir(^dir)
+    else
+      wri " Field direction=>"  "NEG" ^xy_dir(^dir)
+  end if
+      wri
+      wri "    Field Angle        Strehl Ratio        ImgHgt"
+      wri "                                    "
+      wri "    -----------------------------------------------"
+      wri
+      for ^f 1 (num f)
+          wri q^format ^relfov(^dir+((^freq-1)*4),^f) ^relill(^dir+((^freq-1)*4),^f) ^imghgt(^dir+((^freq-1)*4),^f)
+      end for
+      wri
+ end for
+
+ out no
+
+ ^max_hgt == 0
+
+ !! change relfov to all pos.
+ for ^j 1 25
+  for ^i 1 4
+    ^pos_relfov(^i,^j) == absf(^relfov(^i,^j))
+    ^pos_imghgt(^i,^j) == absf(^imghgt(^i,^j))
+    if ^pos_imghgt(^i,^j) > ^max_hgt
+      ^max_hgt == ^pos_imghgt(^i,^j)
+    end if
+  end for
+ end for
+
+!!! switch fint to positive so labels are right
+^fint == absf(^fint)
+
+end for                !!end of multi freq loop!!
+
+
+^tit_apend == #6
+                              !!! Plotting  !!!
+^TempX == num_to_str(^maxfield)
+^TempI== locstr(^TempX,'.')     ! ^i is location of decimal point
+^TempJ == lenstr(^TempX)     ! ^j is length of the string ^x
+if ^TempI           ! If there is a decimal point in ^x
+^TempX == substr(^TempX,1,^TempI+1)
+else             ! Else it is an integer
+^TempX == concat(^TempX,'.0')   ! Concatenate the decimal and zeros
+end if
+
+ugr
+tit concat(concat(concat("Strehl Ratio vs Field Angle",""),"       "),^tit_apend)
+xla " "            !xla "Absolute Value of Field Angle"
+yla " "            !yla "Strehl Ratio"
+xmi 0;xma ^maxfield; xfo f 2          !!! xde sets x axis tick increment
+ymi .75;yma 1;yde 0.05;yfo f 2
+
+for ^freq 1 3    !!!added muli-freq plotting loop
+ !^dir == 1     !! if want to plot only +y field.
+for ^dir 1 3    !!! changed to 1 thru 3 so only plotting X direction once
+       
+!!Labeling scheme
+  ^col == ^dir
+  if ^dir = 2
+     ^col == 3
+  else if ^dir = 3
+     ^col == 2
+  end if
+
+  if ^dir = 1
+    ^tit == '+Y direction'
+  else if ^col = 2
+    ^tit == '+/-X direction'
+  else if ^col = 3
+    ^tit == '-Y direction'
+  else
+    ^tit == '-X direction'
+  end if
+ 
+         dpo ^tit
+         spl pnt      !!!!!  'spl pnt' draws connecting line, 'pnt' does not
+         for ^f 1 (num f)
+ !!!           if ^relfov(^dir,^f) < (1.4*(2-(^freq/3))**3)
+                ^pos_relfov(^dir,^f) ^relill(^col+((^freq-1)*4),^f)  !!strehl vs field angle
+ !!!           end if
+ !              ^pos_imghgt(^dir,^f) ^relill(^col+((^freq-1)*4),^f)  !!strehl vs image height.  CAN'T HAVE BOTH!!
+         end for
+         end
+
+end for
+end for
+
+dpo 'diffraction limited'
+lin 4 bla
+0 .8
+^maxfield .8
+!^imghgt(2,25) .8
+end
+go
+
+!!Plot it again!!
+ugr
+tit concat(concat(concat("Strehl Ratio vs Image Position",""),"       "),^tit_apend)
+xla " "              !xla "Absolute Value of Image Height"
+yla " "              !yla "Strehl Ratio"
+!xmi 0;xma ^maxfield; xfo f 2          !!! xde sets x axis tick increment
+xmi 0;xma ^max_hgt; xde 1; xfo f 2
+ymi 0;yma 1;yde 0.1;yfo f 1
+
+for ^dir 1 4
+  if ^dir = 1
+    ^tit == '+Y direction'
+  else if ^dir = 2
+    ^tit == '+X direction'
+  else if ^dir = 3
+    ^tit == '-Y direction'
+  else
+    ^tit == '-X direction'
+  end if
+
+         dpo ^tit
+         spl pnt      !!!!!  'spl pnt' draws connecting line, 'pnt' does not
+         for ^f 1 (num f)
+!            ^relfov(^dir,^f) ^relill(^dir,^f)    !!strehl vs field angle
+            ^imghgt(^dir,^f) ^relill(^dir,^f)    !!strehl vs image height.  CAN'T HAVE BOTH!!
+         end for
+         end
+end for
+
+dpo 'diffraction limited'
+lin 4 bla
+0 .9
+!^maxfield .9
+^imghgt(2,25) .9
+end
+go
+
+!!! Reinstate old field !!!
+for ^k 1 25
+    xan f^k ^oldfield(1,^k)
+end for
+
+for ^k 1 25
+    yan f^k ^oldfield(2,^k)
+end for
+
+cra f2 1 1 1 1  !! This is silly, but trying to keep next command from failing and aborting.
+del cra fa      !! Hopefully return to non-crappy fields and vignetting
+run "C:\CODEV106_SR1\macro\setvig.seq" 1e-007 0.1 100 NO ;GO
+
+
+!!! loops to calculate FOV and imghgt where strehl = 0.8 (or whatever)
+!!!run "C:\CODEV106_SR1\macro\flnint.seq"  !!! creates a linear interpolate function, @linint(y,y1,y2,x1,x2)
+^strehl == #7
+
+for ^freq 1 3 !! all frequencies
+  for ^j 1 4    !! across y, x, -y, -x
+    for ^i 1 25   !! across fields
+                      !(^j+((^freq-1)*4),^f)
+      if (^relill(^j+((^freq-1)*4),^i) = ^strehl)
+        ^s(^freq,^j) == ^relill(^j+((^freq-1)*4),^i)
+        ^s_fov(^freq,^j) == ^relfov(^j+((^freq-1)*4),^i)
+        ^s_img(^freq,^j) == ^imghgt(^j+((^freq-1)*4),^i)
+        out yes
+        wri "testing the equal case  " ^s ^s_fov ^s_img
+        out no
+      end if
+      if (^relill(^j+(^freq-1)*4,^i) > ^strehl)     !!! should end up as point just below strehl = 0.8
+        ^u_s(^freq,^j) == ^relill(^j+(^freq-1)*4,^i)
+        ^ufov(^freq,^j) == ^relfov(^j+((^freq-1)*4),^i)
+        ^uimg(^freq,^j) == ^imghgt(^j+((^freq-1)*4),^i)
+        ^l_s(^freq,^j) == ^relill(^j+(^freq-1)*4,^i+1)
+        ^lfov(^freq,^j) == ^relfov(^j+((^freq-1)*4),^i+1)  !!past optimal strehl
+        ^limg(^freq,^j) == ^imghgt(^j+((^freq-1)*4),^i+1)
+        !wri "below strehl" ^l_s ^u_s
+      end if
+    end for
+
+    ^i_fov(^freq,^j) == @linint(^strehl, ^l_s(^freq,^j),^u_s(^freq,^j),^lfov(^freq,^j),^ufov(^freq,^j))
+    ^i_img(^freq,^j) == @linint(^strehl, ^l_s(^freq,^j),^u_s(^freq,^j),^limg(^freq,^j),^uimg(^freq,^j))
+
+  end for
+end for
+
+!! write what I just calculated
+^format == "     'd.ddd'               'dd.ddd'            'dd.ddd'"
+
+out yes
+for ^freq 1 3 !! all frequencies
+  wri " Frequency step: " ^freq
+  wri "    Strehl Ratio        Field Angle        ImgHgt"
+  for ^j 1 4    !! across y, x, -y, -x
+    wri q^format ^strehl ^i_fov(^freq,^j) ^i_img(^freq,^j)
+end for
+end for
+out no

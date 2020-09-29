@@ -1,0 +1,172 @@
+! Calc PR and IP across focal plane.  coords are relative FOV.
+! calculates out to whatever the y angle of field 2 is.
+! write data columns to buffer    FOV_x | FOV_y | IP | PR | flag
+! and write mueller components,  FOV_x | FOV_y | II | IQ | IU | QQ | QU | flag
+
+!!set up args
+
+! arg0 '  '
+! arg0 '  '
+
+! arg1 name 'Total number of field points on FP'
+! arg1 type int
+! arg1 default 121
+
+! arg2 name 'Name of output file'
+! arg2 type str
+! arg2 default mm_analysis_PR_IP.csv
+
+! arg3 name 'Name of mueller matrix output file'
+! arg3 type str
+! arg3 default mm_analysis_PR_IP.csv
+
+! arg4 name 'Frequency to calculate at'
+! arg4 type num
+! arg4 default 220
+
+!declare variables
+
+lcl num ^x_fov ^y_fov
+lcl num ^II ^IQ ^IU ^QQ ^QU
+lcl num ^PR ^IP
+lcl num ^data(#1,5)   !! array that is # of points long and has 5 columns.  All data goes here.  Last column is flag for data or no data
+lcl num ^mm_items(#1,8)   !! array of mueller matrix values.  II, IQ, IU, QQ, QU
+lcl num ^low ^high
+lcl num ^export(5) ^export2(8)
+lcl str ^export2str(8) ^exportstr(5)
+
+WL W1 (300.0/#4)*1e6
+
+OUT NO
+^export2str(1) == 'X';^export2str(2) == 'Y';^export2str(3) == 'II';^export2str(4) == 'IQ'
+^export2str(5) == 'IU';^export2str(6) == 'QQ';^export2str(7) == 'QU';^export2str(8) == 'flag'
+
+^exportstr(1) == 'X';^exportstr(2) == 'Y';^exportstr(3) == 'IP';^exportstr(4) == 'PR';^exportstr(5) == 'flag'
+
+! just read in what the max fov is.  This means you need to still enter it correctly!  Alternatively it could be another input...
+^max_field == (YAN f2)
+^max_field == absf(^max_field)
+
+if (^max_field = 0)
+ out yes; wri 'wrong field angle for f2, make it a Y angle'
+ rtn
+end if
+
+! inital values
+^radius == (sqrt(#1)-1)/2
+^high == ^radius
+^low == -^radius
+!wri ^low ^high  !! debugging
+^pos == 0
+
+for ^i ^low ^high
+wri ("still running.  At row ") ^i
+for ^j ^low ^high
+^x_fov == ^i/^radius
+^y_fov == ^j/^radius
+^pos == ^pos + 1
+
+out NO
+!! prep to run mueller matrix and put in buffer.
+buf del b0
+buf Yes
+in pave_mm ^x_fov ^y_fov
+!out NO
+buf NO
+!! find mueller in buffer and write values
+buf mov b0 i1 j1                                                       !!!
+buf fnd "Pupil averaged Mueller matrix for the field"
+buf mov ic+1 jc
+^II == (buf.num ic jc)
+^IQ == (buf.num ic+1 jc)
+^QQ == (buf.num ic+1 jc+1)
+^IU == (buf.num ic+2 jc)
+^QU == (buf.num ic+2 jc+1)
+!!wri ^II ^IQ ^IU ^QQ ^QU  !! debugging
+
+if ^II > 0  !! check to see if mueller calculated or not
+  !! calculate PR and IP, don't worry about U vs Q yet.
+  ^PR == 1/2 * atanf(^QU/^QQ)*180/3.14159265
+  ^IP == sqrt(^IQ**2.0 + ^IU**2.0)/^II
+  wri ^PR ^IP
+  ^data(^pos,1) == ^x_fov * ^max_field
+  ^data(^pos,2) == ^y_fov * ^max_field
+  ^data(^pos,3) == ^IP
+  ^data(^pos,4) == ^PR
+  ^data(^pos,5) == 1
+else
+  ^data(^pos,1) == ^x_fov * ^max_field
+  ^data(^pos,2) == ^y_fov * ^max_field
+  ^data(^pos,3) == 0
+  ^data(^pos,4) == 0
+  ^data(^pos,5) == 0
+end if
+
+if ^II > 0  !! check to see if mueller calculated or not
+  ^mm_items(^pos,1) == ^x_fov * ^max_field
+  ^mm_items(^pos,2) == ^y_fov * ^max_field
+  ^mm_items(^pos,3) == ^II
+  ^mm_items(^pos,4) == ^IQ
+  ^mm_items(^pos,5) == ^IU
+  ^mm_items(^pos,6) == ^QQ
+  ^mm_items(^pos,7) == ^QU
+  ^mm_items(^pos,8) == 1
+else
+  ^mm_items(^pos,1) == ^x_fov * ^max_field
+  ^mm_items(^pos,2) == ^y_fov * ^max_field
+  ^mm_items(^pos,3) == 0
+  ^mm_items(^pos,4) == 0
+  ^mm_items(^pos,5) == 0
+  ^mm_items(^pos,6) == 0
+  ^mm_items(^pos,7) == 0
+  ^mm_items(^pos,8) == 0
+end if
+
+end for
+end for
+
+!! write to buffer and save to file
+buf del b3
+BUF MOV b3
+for ^i 1 5
+ buf put b3 i1 j^i ^exportstr(^i)
+end for
+
+for ^i 1 #1
+ for ^j 1 5
+   ^export(^j) == ^data(^i, ^j)
+ end for
+ ^result == ARR_TO_BUF(^export, 1, 5, 3)
+end for
+BUF SEP ','
+!out yes        !! debugging
+!buf lis b3     !!
+out yes
+BUF EXP SEP #2
+out no
+
+!! write other data buffer and save to file
+buf del b3
+BUF MOV b3
+out yes
+for ^i 1 8
+ buf put b3 i1 j^i ^export2str(^i)
+end for
+
+for ^i 1 #1
+ for ^j 1 8
+   ^export2(^j) == ^mm_items(^i, ^j)
+ end for
+ ^result == ARR_TO_BUF(^export2, 1, 8, 3)
+end for
+BUF SEP ','
+!out yes       !! debugging
+!buf lis b3    !!
+out yes
+BUF EXP SEP #3
+
+!! write to screen
+wri "    Azimuth	   Elevation       IP        PR        data flag"
+for ^i 1 #1
+  wri ^data(^i, 1) ^data(^i, 2) ^data(^i, 3) ^data(^i, 4) ^data(^i, 5)
+end for

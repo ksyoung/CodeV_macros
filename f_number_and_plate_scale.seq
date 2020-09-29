@@ -1,0 +1,118 @@
+!Calc f/# across focal plane.  coords are relative FOV.
+!write data columns to buffer    FOV_x | FOV_y | f/# | plate scale | flag
+! f/# is average of f_x and f_y at each field point.
+
+!!set up args
+
+! arg0 '  '
+! arg0 '  '
+
+! arg1 name 'Total number of field points on FP'
+! arg1 type int
+! arg1 default 121
+
+! arg2 name 'Name of output file'
+! arg2 type str
+! arg2 default "strehl_across_field.csv"
+
+! arg3 name 'Radial field angle to probe to'
+! arg3 type num
+! arg3 default 3
+
+
+!declare variables and such
+
+lcl num ^x_fov ^y_fov
+lcl num ^fnumx ^fnumy
+lcl num ^data(#1,5)   !! array that is # of points long and 5 columns. data is: x, y, fnum, plate_scale, flag.  Last column is flag for data / no data
+lcl num ^low ^high
+lcl num ^export(5)
+
+! inital values
+OUT NO
+^dfov == #3
+^radius == (sqrt(#1)-1)/2
+^high == ^radius
+^low == -^radius
+!wri ^low ^high
+^pos == 0
+
+for ^i ^low ^high
+for ^j ^low ^high
+^x_fov == ^i/^radius
+^y_fov == ^j/^radius
+^pos == ^pos + 1
+
+xan f1 ^x_fov*^dfov
+yan f1 ^y_fov*^dfov
+
+out yes
+
+wri 'x, y field: ' ^y_fov*^dfov ^x_fov*^dfov
+
+!! exclude points at corners to avoid ray traces failing.  limit to a radius.
+if (sqrtf(^x_fov**2+^y_fov**2) < 1.1 )
+ 
+  wri 'running psf'
+  !! set vignetting
+  out no
+  run "C:\CODEV106_SR1\macro\setvig.seq" 1e-007 0.1 100 NO ;GO
+
+  !! run psf and put in buffer.
+  buf del b0
+  buf Yes
+  psf;plo n;go
+  buf No
+  buf mov b0 i1 j1
+
+  !! Collect f number data
+  buf fnd b0 "F-numbers"
+  buf mov b0 ic+2 j2    !!move to first value.  f# of f1, in x direction.
+
+  ^fnumx == (buf.num ic jc)
+
+  buf mov b0 ic+1 j2  !! move to number instead of the string 'Y' in first row of Y f#'s.
+
+  ^fnumy == (buf.num ic jc)
+     
+  ^data(^pos,1) == (xri f1)  !! This only works if all rays trace
+  ^data(^pos,2) == (yri f1)
+  ^data(^pos,3) == (^fnumx + ^fnumy)/2.0
+  ^data(^pos,4) == 206265/(150*^data(^pos,3))  !! plate scale in arcsec/cm.
+  ^data(^pos,5) == 1
+  out yes
+  wri 'fnumx, fnumy' ^fnumx ^fnumy
+
+else
+  wri 'not running psf'
+  ^data(^pos,1) == 2*^i   !! write out cleary wrong numbers. (also they're flagged so who cares?)
+  ^data(^pos,2) == 2*^j
+  ^data(^pos,3) == 0.0
+  ^data(^pos,4) == 0.0
+  ^data(^pos,5) == 0
+
+end if
+
+end for
+end for
+
+!! write to buffer and save to file
+buf del b3
+BUF MOV b3
+for ^i 1 #1
+ for ^j 1 5
+   ^export(^j) == ^data(^i, ^j)
+ end for
+ ^result == ARR_TO_BUF(^export, 1, 5, 3)
+end for
+BUF SEP ','
+!out yes       !! debugger
+!buf lis b3    !!
+out yes
+BUF EXP SEP #2
+  
+!! write to screen
+wri "    x image height	   y image height       fnum    plate scale    data flag"
+for ^i 1 #1
+  wri ^data(^i, 1) ^data(^i, 2) ^data(^i, 3) ^data(^i, 4) ^data(^i, 5)
+end for
