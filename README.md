@@ -71,12 +71,12 @@ filename; and (4) The calculation frequency in GHz. The size of the calculation 
 angle is set by the Y field angle (YAN) of field 2 (F2). Again, I recommend the macro 
 manager GUI. It will prompt for all inputs except the size of the grid in angle.
 
-The first ouptut file has columns X angle, Y angle, IP, PR, and ‘flag’ and the second
+The first output file has columns X angle, Y angle, IP, PR, and ‘flag’ and the second
 has columns X angle, Y angle, II, IQ, IU, QQ, QU, and ‘flag’. All angles are in degrees.
 The flags are 1 if the calculation succeeded, and 0 if it failed.
 
 ##### fnum_plate_scale.seq  
-This macro uses the CodeV PSF command to calculated the
+This macro uses the CodeV PSF command to calculate the
 system’s f-number and plate scale across a square grid at the focal surface. The f-number
 is the average of the X and Y f-numbers at each point and the plate scale is derived
 from that f-number. The inputs are: (1) The number of points in the grid, which must
